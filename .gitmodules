@@ -1,0 +1,6 @@
+[submodule "PathOfBuilding"]
+	path = PathOfBuilding
+	url = https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
+[submodule "lupa"]
+	path = lupa
+	url = https://github.com/AnSq/lupa.git

@@ -1,0 +1,11 @@
+*.json
+
+__pycache__/
+env/
+
+sandbox/
+misc/
+stashes/
+output/
+export/
+.~lock.*
