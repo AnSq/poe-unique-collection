@@ -270,7 +270,10 @@ class PoEClient:
                 return data
         else:
             if "error" in data:
-                raise PoEError(data["error"]["message"], r.status_code, data["error"]["code"])
+                if not isinstance(data["error"], dict):
+                    raise RuntimeError(data)
+                else:
+                    raise PoEError(data["error"]["message"], r.status_code, data["error"]["code"])
             else:
                 raise PoEError("unknown error", r.status_code, None)
 

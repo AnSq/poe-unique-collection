@@ -4,3 +4,6 @@
 [submodule "lupa"]
 	path = lupa
 	url = https://github.com/AnSq/lupa.git
+[submodule "bitop-lua"]
+	path = bitop-lua
+	url = https://github.com/AlberTajuelo/bitop-lua.git

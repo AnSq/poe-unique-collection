@@ -1,4 +1,6 @@
 *.json
+*.txt
+*.csv
 
 __pycache__/
 env/
