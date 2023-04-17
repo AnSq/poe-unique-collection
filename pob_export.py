@@ -3,15 +3,16 @@
 import os
 import json
 import re
+import logging
 
 import lupa.lua51 as lupa  #type: ignore
-
-
 
 from typing import Any
 from pprint import pprint as pp
 
 POB_DIR = r"./PathOfBuilding/src"
+
+log = logging.getLogger(__name__)
 
 try:
     from CompactJSONEncoder import CompactJSONEncoder
@@ -28,6 +29,8 @@ except ImportError:
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
+
     lua = lupa.LuaRuntime()
     os.chdir(POB_DIR)
     
@@ -56,6 +59,8 @@ def main():
         return item
 
     lua.execute(f'pob = dofile("HeadlessWrapper.lua")')
+    print("===== PoB Loaded ==================================\n")
+
     
     uniqueDB = lua.globals().launch.main.uniqueDB.list
     
@@ -115,7 +120,7 @@ def pob_export(uniqueDB, generated_names):
         variants = list(item.variantList.values() if item.variantList else ["Only"])
 
         if item.title in generated_names:
-            print(f"{len(variants)} {item.title}, {item.baseName}")
+            log.info(f"generated skipped: {len(variants)} {item.title}, {item.baseName}")
             continue  # todo?
         
         variant_slots = 1
@@ -141,13 +146,21 @@ def pob_export(uniqueDB, generated_names):
         explicits = []
         for outlist, inlist in ((implicits, item.implicitModLines), (explicits, item.explicitModLines)):
             for mod in inlist.values():
-                mod_data = genericize_mod(mod.line)
+                mod_data = genericize_mod(mod.line, item_name=item.title)
 
                 if mod.crafted:
                     assert mod.crafted == r"{crafted}"
                     mod_data["crafted"] = True
                 
                 mod_data["variants"] = make_variant_list(mod, len(variants))
+                
+                if mod_data["line"].startswith("LevelReq: "):
+                    log.info(f'LevelReq: {item.title}')
+                    continue
+                
+                if mod_data["line"] == "This item can be anointed by Cassia":
+                    log.info(f'{item.title} can be annointed')
+                    continue
 
                 outlist.append(mod_data)
 
@@ -209,21 +222,26 @@ def inspect_func(lua_inspect):
     return inspect
 
 
-def genericize_mod(line):
+def genericize_mod(line, *, item_name=None):  # item_name is a debgging param
     number_pattern = r"-?\d+\.?\d*"
-    range_pattern = rf"\(({number_pattern})-({number_pattern})\)|({number_pattern})"
-    
-    matches = re.findall(range_pattern, line)
+    range_pattern = rf"(?P<sign>-?)\((?P<start>{number_pattern})-(?P<end>{number_pattern})\)|(?P<single>{number_pattern})"
 
     ranges = []
-    for m in matches:
-        if m[2]:  # single number
-            n = float(m[2])
+    for m in re.finditer(range_pattern, line):
+        if m["single"]:  # single number
+            n = float(m["single"])
             ranges.append([n, n])
         else:  # range
-            ranges.append(sorted([float(m[0]), float(m[1])]))
+            r = [float(m["start"]), float(m["end"])]
+            if m["sign"] == "-":
+                r = [-x for x in r]
+            ranges.append(sorted(r))
 
     line = re.sub(range_pattern, "#", line)
+
+    if "Area of Effect of Area Skills" in line:
+        log.info(f'"{item_name}" has "Area of Effect of Area Skills"')
+        line = line.replace("Area of Effect of Area Skills", "Area of Effect")  #TODO: fix in PoB
 
     mod_data = {"line" : line}
     if ranges:

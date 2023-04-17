@@ -4,9 +4,10 @@ import os
 import json
 import logging
 import re
-import urllib.parse
+import sys
 
 import pathofexile
+import legacy
 
 from pprint import pprint as pp
 
@@ -20,64 +21,110 @@ def main():
 
 
 def compare_unique_tabs(poe:pathofexile.PoEClient):
-    characters = poe.list_characters()
-    leagues = []
-    for c in characters:
-        if c["league"] not in leagues:
-            leagues.append(c["league"])
-    
-    league = []
-    tab = []
-    stash_tabs = {}
-    for j in range(2):
-        for i,l in enumerate(leagues):
-            print(f"{i}: {l}")
-        
-        league.append(leagues[prompt_number("Enter a leauge number: ", range(len(leagues)))])
-        print()
-
-        if league[j] not in stash_tabs:
-            stash_tabs[league[j]] = poe.list_stashes(league[j])
-        valids = set()
-        for i,t in enumerate(stash_tabs[league[j]]):
-            if t["type"] == "UniqueStash":
-                print(f'{i}: {t["name"]}\t{pathofexile.STASH_TAB_COLOUR_NAMES[t["metadata"]["colour"]]}')
-                valids.add(i)
-        tab.append(stash_tabs[league[j]][prompt_number("Enter a tab number: ", valids)])
-        print()
-
-    utab = []
-    items = []
-    for i in range(2):
-        u = poe.get_stash(league[i], tab[i]["id"], get_children=True)
-        utab.append(u)
-        it = []
-        for s in u["children"]:
-            it += s["items"]
-        items.append(it)
-        print(f'{league[i]} {tab[i]["name"]} {sum(map(lambda x:x["metadata"]["items"], utab[i]["children"]))} {len(it)}')
+    league, tab, api_items = load_unique_tabs(poe, "-c" in sys.argv)
     
     with open("gg_export.json") as f:
-        uniques = json.load(f)
-    
-    items_dict = []
-    for j, item_list in enumerate(items):
-        items_dict.append({})
-        for item in item_list:
-            name = item["name"]
-            icon = item["icon"].split("/")[-1].split(".")[0]
-            items_dict[j][(name, icon)] = item
+        gg_export = json.load(f)
 
+    with open("pob_export.json") as f:
+        pob_db = json.load(f)
+    
+    api_items_dict = []
+    for j, api_item_list in enumerate(api_items):
+        api_items_dict.append({})
+        for api_item in api_item_list:
+            name = api_item["name"]
+            icon = api_item["icon"].split("/")[-1].split(".")[0]
+            api_items_dict[j][(name, icon)] = api_item
+
+    num_broken = 0
     with open("tab_compare.csv", "w") as f:
         tab0_name = f'{league[0]} {tab[0]["name"]}'
         tab1_name = f'{league[1]} {tab[1]["name"]}'
-        f.write(f'#,Name,Icon,Type,Hidden (Challenge),Hidden (Standard),Alt Art,"{tab0_name}","{tab1_name}",Either Tab\n')
-        for j,u in enumerate(sorted(uniques, key=lambda x:x["sort_key"])):
-            name = u["name"]
-            icon = u["icon"]
-            tab0 = (name, icon) in items_dict[0]
-            tab1 = (name, icon) in items_dict[1]
-            f.write(f'{j},"{name}","{icon}",{u["type"]},{u["hidden_challenge"]},{u["hidden_standard"]},{u["alt_art"]},{tab0},{tab1},{tab0 or tab1}\n')
+        f.write(f'#,Name,Icon,Type,Hidden (Challenge),Hidden (Standard),Alt Art,"{tab0_name}","{tab1_name}",Either Tab,Left Variant,Right Variant,L Corrupted,R Corrupted,L Slots,R Slots\n')
+        for j,gg_item in enumerate(sorted(gg_export, key=lambda x:x["sort_key"])):
+            name = gg_item["name"]
+            icon = gg_item["icon"]
+
+            tab = []
+            tab.append((name, icon) in api_items_dict[0])
+            tab.append((name, icon) in api_items_dict[1])
+
+            variant = [None, None]
+            corrupt = [None, None]
+            slots = [None, None]
+            for i in range(2):
+                if tab[i]:
+                    it = api_items_dict[i][(name, icon)]
+                    variant[i] = legacy.get_variant(it, pob_db)
+                    corrupt[i] = "corrupted" in it and it["corrupted"]
+                    pob_item = legacy.find_pob_unique(pob_db, name, it["baseType"])
+                    slots[i] = pob_item.get("variant_slots", 1) if pob_item else None
+
+            f.write(f'{j},"{name}","{icon}",{gg_item["type"]},{gg_item["hidden_challenge"]},{gg_item["hidden_standard"]},{gg_item["alt_art"]},{tab[0]},{tab[1]},{tab[0] or tab[1]},"{variant[0]}","{variant[1]}",{corrupt[0]},{corrupt[1]},{slots[0]},{slots[1]}\n')
+            if tab[0] and not corrupt[0] and variant[0] == [] and slots[0] == 1:
+                num_broken += 1
+    
+    print(num_broken)
+
+
+def load_unique_tabs(poe:pathofexile.PoEClient, cached=False):
+    CACHE_FNAME = "unique_tabs_cache.json"
+    
+    if cached:
+        with open(CACHE_FNAME) as f:
+            data = json.load(f)
+        
+        league = data["league"]
+        tab    = data["tab"]
+        items  = data["items"]
+
+    else:
+        characters = poe.list_characters()
+        leagues = []
+        for c in characters:
+            if c["league"] not in leagues:
+                leagues.append(c["league"])
+        
+        league = []
+        tab = []
+        stash_tabs = {}
+        for j in range(2):
+            for i,l in enumerate(leagues):
+                print(f"{i}: {l}")
+            
+            league.append(leagues[prompt_number("Enter a leauge number: ", range(len(leagues)))])
+            print()
+
+            if league[j] not in stash_tabs:
+                stash_tabs[league[j]] = poe.list_stashes(league[j])
+            valids = set()
+            for i,t in enumerate(stash_tabs[league[j]]):
+                if t["type"] == "UniqueStash":
+                    print(f'{i}: {t["name"]}\t{pathofexile.STASH_TAB_COLOUR_NAMES[t["metadata"]["colour"]]}')
+                    valids.add(i)
+            tab.append(stash_tabs[league[j]][prompt_number("Enter a tab number: ", valids)])
+            print()
+
+        utab = []
+        items = []
+        for i in range(2):
+            u = poe.get_stash(league[i], tab[i]["id"], get_children=True)
+            utab.append(u)
+            it = []
+            for s in u["children"]:
+                it += s["items"]
+            items.append(it)
+            print(f'{league[i]} {tab[i]["name"]} {sum(map(lambda x:x["metadata"]["items"], utab[i]["children"]))} {len(it)}')
+        
+        with open(CACHE_FNAME, "w") as f:
+            json.dump({
+                "league" : league,
+                "tab"    : tab,
+                "items"  : items
+            }, f, indent='\t')
+    
+    return (league, tab, items)
 
 
 def prompt_number(prompt, valids):
