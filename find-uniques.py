@@ -11,7 +11,7 @@ import legacy
 
 from pprint import pprint as pp
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
 
