@@ -11,3 +11,5 @@ stashes/
 output/
 export/
 .~lock.*
+
+!test_data/*

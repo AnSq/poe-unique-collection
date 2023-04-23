@@ -8,7 +8,7 @@ from legacy import *
 
 @pytest.fixture
 def test_items():
-    with open("legacy_test.json") as f:
+    with open("test_data/legacy_test.json") as f:
         test_items_ = json.load(f)
     return test_items_
 

@@ -19,7 +19,7 @@ vm_log.propagate = False
 def main():
     logging.basicConfig(level=logging.DEBUG)
 
-    with open("legacy_test.json") as f:
+    with open("test_data/legacy_test.json") as f:
         test_items = json.load(f)
     
     with open("pob_export.json") as f:
