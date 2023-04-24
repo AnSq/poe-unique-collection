@@ -4,11 +4,15 @@ import os
 import json
 import re
 import logging
+import attrs
 
 import lupa.lua51 as lupa  #type: ignore
 
 from typing import Any
 from pprint import pprint as pp
+
+from utils import GenericMod, make_variant_list
+
 
 POB_DIR = r"./PathOfBuilding/src"
 
@@ -20,12 +24,122 @@ try:
         MAX_WIDTH = 240
         MAX_ITEMS = 50
 
-        def _primitives_only(self, o: list | tuple | dict):
+        def _primitives_only(self, o:list|tuple|dict):
             if isinstance(o, (list, tuple)) and all(super(JE, self)._primitives_only(x) for x in o):
                 return True
             return super()._primitives_only(o)
+        
+        def encode(self, o):
+            if attrs.has(o):
+                if hasattr(o, "asdict_filter"):
+                    return self._encode_object(attrs.asdict(o, filter=o.asdict_filter, recurse=False))
+                return self._encode_object(attrs.asdict(o, recurse=False))
+            return super().encode(o)
 except ImportError:
-    JE = None
+    class JE (json.JSONEncoder):
+        def default(self, o:Any) -> Any:
+            if attrs.has(o):
+                if hasattr(o, "asdict_filter"):
+                    # recursion in attrs means that filter is only applied to the top-level attrs object.
+                    # recurse=False lets json handle the recursion, which allows the filter to apply to member objects
+                    return attrs.asdict(o, filter=o.asdict_filter, recurse=False)
+                return attrs.asdict(o, recurse=False)
+            return super().default(o)
+
+
+
+@attrs.define
+class BaseTypeVariant:
+    basetype: str
+    variants: list[int]
+
+
+
+@attrs.define
+class UpgradePath:
+    dest: str
+    currency: str
+
+
+
+@attrs.define
+class PoBItem:
+    name: str
+    basetype: str|None
+    basetypes: list[BaseTypeVariant]|None
+    itemclass: str
+    source: str
+    league: str
+    upgrade: UpgradePath|str|None
+    variants: list[str]
+    implicits: list[GenericMod]
+    explicits: list[GenericMod]
+    variant_slots: int = attrs.field(default=1)
+
+
+    @classmethod
+    def from_lua_item(cls, lua_item):
+        variants = list(lua_item.variantList.values() if lua_item.variantList else ["Only"])
+        
+        variant_slots = 1
+        if lua_item.variantAlt:
+            variant_slots = 2
+        if lua_item.variantAlt2:
+            variant_slots = 3
+        if lua_item.variantAlt3:
+            variant_slots = 4
+        if lua_item.variantAlt4:
+            variant_slots = 5
+        if lua_item.variantAlt5:
+            variant_slots = 6
+
+        basetypes:list[BaseTypeVariant]|None = []
+        for b in lua_item.baseLines.values():
+            basetypes.append(BaseTypeVariant(b["line"], make_variant_list(b, len(variants))))
+
+        implicits:list[GenericMod] = []
+        explicits:list[GenericMod] = []
+        for outlist, inlist in ((implicits, lua_item.implicitModLines), (explicits, lua_item.explicitModLines)):
+            for mod in inlist.values():
+                generic = GenericMod.from_lua_mod(mod, variants, item_name=lua_item.title)
+                
+                if generic.line.startswith("LevelReq: "):
+                    log.info(f'LevelReq: {lua_item.title}')
+                    continue
+                
+                if generic.line == "This item can be anointed by Cassia":
+                    log.info(f'{lua_item.title} can be annointed')
+                    continue
+
+                outlist.append(generic)
+
+        basetype:str|None = None
+        if len(basetypes) == 1:
+            basetype = lua_item.baseName
+            basetypes = None
+        
+        upgrade:UpgradePath|str|None = None
+        if lua_item.upgradePaths:
+            assert len(lua_item.upgradePaths) == 1
+            upgrade_pattern = r"Upgrades to unique{(.+?)} (?:using|via) currency{(.+?)}"
+            upgrade_match = re.fullmatch(upgrade_pattern, lua_item.upgradePaths[1])
+            if upgrade_match:
+                upgrade = UpgradePath(upgrade_match[1], upgrade_match[2])
+            else:
+                upgrade = lua_item.upgradePaths[1]
+        
+        return cls(lua_item.title, basetype, basetypes, lua_item.type, lua_item.source, lua_item.league, upgrade, variants, implicits, explicits, variant_slots)
+    
+
+    @staticmethod
+    def asdict_filter(at:attrs.Attribute, value:Any) -> bool:
+        # print("PoBItem.asdict_filter")
+        if at.name in ("basetype", "basetypes", "upgrade") and value is None:
+            return False
+        if at.name == "variant_slots" and value == 1:
+            return False
+        return True
+
 
 
 def main():
@@ -51,7 +165,6 @@ def main():
 
     def process(item, path):
         last = path[len(path)]
-        # print(inspect(item, 0), list(path.values()), len(path), last, lupa.lua_type(last)=="table" and str(last)=="inspect.KEY", lupa.lua_type(last)=="table" and str(last)=="inspect.METATABLE")
         if lupa.lua_type(last) == "table" and str(last) == "inspect.METATABLE":
             return None
         if path[1] == "affixes":
@@ -68,143 +181,26 @@ def main():
     for item_text in lua.globals().data.uniques.generated.values():
         lines = item_text.split("\n")
         generated_names.add(lines[0])
-
-    # marohi_erqi = uniqueDB["Marohi Erqi, Karui Maul"]
-
-    # with open("../../Marohi_Erqi.txt", "w") as f:
-    #     f.write(inspect(marohi_erqi, process=process))
-    # with open("../../Bottled_Faith.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Bottled Faith, Sulphur Flask"], process=process))
-    # with open("../../Watcher~s_Eye.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Watcher's Eye, Prismatic Jewel"], process=process))
-    # with open("../../Original_Sin.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Original Sin, Amethyst Ring"], process=process))
-    # with open("../../Forbidden_Shako.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Forbidden Shako, Great Crown"], process=process))
-    # with open("../../Impossible_Escape.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Impossible Escape, Viridian Jewel"], process=process))
-    # with open("../../Paradoxica.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Paradoxica, Vaal Rapier"], process=process))
-    # with open("../../Replica_Paradoxica.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Replica Paradoxica, Vaal Rapier"], process=process))
-    # with open("../../Hyperboreus.txt", "w") as f:
-    #     f.write(inspect(uniqueDB["Hyperboreus, Leather Belt"], process=process))
-    with open("../../Esh's_Mirror.txt", "w") as f:
-        f.write(inspect(uniqueDB["Esh's Mirror, Vaal Spirit Shield"], process=process))
     
     uniques = pob_export(uniqueDB, generated_names)
 
     with open("../../pob_export.json", "w") as f:
         json.dump(uniques, f, cls=JE, indent=4)
-    
-    print()
-
-    # counts = {}
-    # for u in uniques:
-    #     if u["name"] not in counts:
-    #         counts[u["name"]] = 0
-    #     counts[u["name"]] += 1
-    # for c in counts:
-    #     if counts[c] > 1:
-    #         print(c, counts[c])
-    
-    # pp(dict(lua.globals().colorCodes))
 
 
 def pob_export(uniqueDB, generated_names):
-    uniques = []
+    uniques:list[PoBItem] = []
     for i in uniqueDB:
         # print(i)
-        item:dict[str,Any] = uniqueDB[i]
-
-        variants = list(item.variantList.values() if item.variantList else ["Only"])
+        item = uniqueDB[i]
 
         if item.title in generated_names:
-            log.info(f"generated skipped: {len(variants)} {item.title}, {item.baseName}")
+            log.info(f"generated skipped: {item.title}, {item.baseName}")
             continue  # todo?
         
-        variant_slots = 1
-        if item.variantAlt:
-            variant_slots = 2
-        if item.variantAlt2:
-            variant_slots = 3
-        if item.variantAlt3:
-            variant_slots = 4
-        if item.variantAlt4:
-            variant_slots = 5
-        if item.variantAlt5:
-            variant_slots = 6
-
-        basetypes = []
-        for b in item.baseLines.values():
-            basetypes.append({
-                "basetype" : b["line"],
-                "variants" : make_variant_list(b, len(variants))
-            })
-
-        implicits = []
-        explicits = []
-        for outlist, inlist in ((implicits, item.implicitModLines), (explicits, item.explicitModLines)):
-            for mod in inlist.values():
-                mod_data = genericize_mod(mod.line, item_name=item.title)
-
-                if mod.crafted:
-                    assert mod.crafted == r"{crafted}"
-                    mod_data["crafted"] = True
-                
-                mod_data["variants"] = make_variant_list(mod, len(variants))
-                
-                if mod_data["line"].startswith("LevelReq: "):
-                    log.info(f'LevelReq: {item.title}')
-                    continue
-                
-                if mod_data["line"] == "This item can be anointed by Cassia":
-                    log.info(f'{item.title} can be annointed')
-                    continue
-
-                outlist.append(mod_data)
-
-        item_data = {"name" : item.title}
-
-        if len(basetypes) > 1:
-            item_data["basetypes"] = basetypes
-        else:
-            item_data["basetype"] = item.baseName
-
-        item_data.update({
-            "class"  : item.type,
-            "source" : item.source,
-            "league" : item.league
-        })
-
-        upgrade = {}
-        if item.upgradePaths:
-            assert len(item.upgradePaths) == 1
-            upgrade_pattern = r"Upgrades to unique{(.+?)} (?:using|via) currency{(.+?)}"
-            upgrade_match = re.fullmatch(upgrade_pattern, item.upgradePaths[1])
-            if upgrade_match:
-                upgrade = {
-                    "dest"     : upgrade_match[1],
-                    "currency" : upgrade_match[2]
-                }
-            else:
-                upgrade = item.upgradePaths[1]
-            
-            item_data["upgrade"] = upgrade
-
-        
-        item_data.update({
-            "variants"  : variants,
-            "implicits" : implicits,
-            "explicits" : explicits
-        })
-
-        if variant_slots > 1:
-            item_data["variant_slots"] = variant_slots
-        
-        uniques.append(item_data)
+        uniques.append(PoBItem.from_lua_item(item))
     
-    uniques.sort(key=lambda x:x["name"])
+    uniques.sort(key=lambda x:x.name)
     
     return uniques
 
@@ -220,42 +216,6 @@ def inspect_func(lua_inspect):
     def inspect(table, depth=None, newline="\n", indent="    ", process=lambda i,p:i):
         return lua_inspect(table, {"depth":depth, "newline":newline, "indent":indent, "process":process})
     return inspect
-
-
-def genericize_mod(line, *, item_name=None):  # item_name is a debgging param
-    number_pattern = r"-?\d+\.?\d*"
-    range_pattern = rf"(?P<sign>-?)\((?P<start>{number_pattern})-(?P<end>{number_pattern})\)|(?P<single>{number_pattern})"
-
-    ranges = []
-    for m in re.finditer(range_pattern, line):
-        if m["single"]:  # single number
-            n = float(m["single"])
-            ranges.append([n, n])
-        else:  # range
-            r = [float(m["start"]), float(m["end"])]
-            if m["sign"] == "-":
-                r = [-x for x in r]
-            ranges.append(sorted(r))
-
-    line = re.sub(range_pattern, "#", line)
-
-    if "Area of Effect of Area Skills" in line:
-        log.info(f'"{item_name}" has "Area of Effect of Area Skills"')
-        line = line.replace("Area of Effect of Area Skills", "Area of Effect")  #TODO: fix in PoB
-
-    mod_data = {"line" : line}
-    if ranges:
-        mod_data["ranges"] = ranges
-    
-    return mod_data
-
-
-def make_variant_list(mod, num_variants:int) -> list[int]:
-    if mod.variantList:
-        mod_variants = list(x-1 for x in mod.variantList.keys())
-    else:
-        mod_variants = list(range(num_variants))
-    return mod_variants
 
 
 if __name__ == "__main__":

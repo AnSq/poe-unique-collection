@@ -5,9 +5,10 @@ import bisect
 import logging
 import io
 
+import attrs
 import rapidfuzz
 
-from pob_export import genericize_mod
+from utils import GenericMod
 
 from pprint import pprint as pp
 
@@ -178,9 +179,16 @@ def variant_match(api_item, variant):
     # fuzzy = rapidfuzz.process.cdist([genericize_mod(x)["line"] for x in api_item["explicitMods"]], [x["line"] for x in variant["explicits"]], processor=normalize_mod_line)
     # vm_log.debug(fuzzy.round(0))
 
-    vm_log.debug(f"    api impl: {api_implicits_matched} {genericize_mod(api_item['implicitMods'][api_implicits_matched.index(False)]) if api_implicits_matched.count(False) == 1 else ''}")
+    bad_api_impl = GenericMod.genericize_mod(api_item['implicitMods'][api_implicits_matched.index(False)]) if api_implicits_matched.count(False) == 1 else ''
+    if bad_api_impl:
+        bad_api_impl = attrs.asdict(bad_api_impl, filter=bad_api_impl.asdict_filter)
+    bad_api_expl = GenericMod.genericize_mod(api_item['explicitMods'][api_explicits_matched.index(False)]) if api_explicits_matched.count(False) == 1 else ''
+    if bad_api_expl:
+        bad_api_expl = attrs.asdict(bad_api_expl, filter=bad_api_expl.asdict_filter)
+
+    vm_log.debug(f"    api impl: {api_implicits_matched} {bad_api_impl}")
     vm_log.debug(f"    var impl: {variant_implicits_matched} {variant['implicits'][variant_implicits_matched.index(False)] if variant_implicits_matched.count(False) == 1 else ''}")
-    vm_log.debug(f"    api expl: {api_explicits_matched} {genericize_mod(api_item['explicitMods'][api_explicits_matched.index(False)]) if api_explicits_matched.count(False) == 1 else ''}")
+    vm_log.debug(f"    api expl: {api_explicits_matched} {bad_api_expl}")
     vm_log.debug(f"    var expl: {variant_explicits_matched} {variant['explicits'][variant_explicits_matched.index(False)] if variant_explicits_matched.count(False) == 1 else ''}")
     
     return all([all(x) for x in (api_implicits_matched, api_explicits_matched, variant_implicits_matched, variant_explicits_matched)])
@@ -189,7 +197,7 @@ def variant_match(api_item, variant):
 def mod_match(api_mod:str, variant_mod:dict, item_name=None):  # item_name is a debugging param
     """test if a concrete mod matches a generic mod"""
     
-    api_generic = genericize_mod(api_mod)
+    api_generic = GenericMod.genericize_mod(api_mod)
 
     # if api_generic["line"] != variant_mod["line"] and api_generic["line"].lower() == variant_mod["line"].lower():
     #     print(item_name)
@@ -203,13 +211,13 @@ def mod_match(api_mod:str, variant_mod:dict, item_name=None):  # item_name is a 
     #     print(variant_mod["line"])
     #     print()
 
-    if normalize_mod_line(api_generic["line"]) != normalize_mod_line(variant_mod["line"]):
+    if normalize_mod_line(api_generic.line) != normalize_mod_line(variant_mod["line"]):
         return False  #TODO: increased/reduced/more/less sign swapping
 
-    if "ranges" in api_generic or "ranges" in variant_mod:
-        assert len(api_generic["ranges"]) == len(variant_mod["ranges"])
+    if api_generic.ranges or "ranges" in variant_mod:
+        assert len(api_generic.ranges) == len(variant_mod["ranges"])
 
-        for api_range, variant_range in zip(api_generic["ranges"], variant_mod["ranges"]):
+        for api_range, variant_range in zip(api_generic.ranges, variant_mod["ranges"]):
             if api_range[0] < variant_range[0] or api_range[1] > variant_range[1]:
                 return False
     
