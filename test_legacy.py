@@ -4,6 +4,7 @@ import pytest
 import json
 
 from legacy import *
+import utils
 
 
 @pytest.fixture
@@ -15,8 +16,7 @@ def test_items():
 
 @pytest.fixture
 def pob_db():
-    with open("pob_export.json") as f:
-        pob_db_ = json.load(f)
+    pob_db_ = utils.load_pob_db(POB_EXPORT_FNAME)
     return pob_db_
 
 

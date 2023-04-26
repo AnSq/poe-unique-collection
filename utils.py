@@ -1,72 +1,61 @@
 #!/usr/bin/env python
+from __future__ import annotations
 
-import re
 import logging
-from typing import Any
+import json
+from typing import Any, cast
+
 import attrs
+import cattrs
 
-
-Ranges = list[list[float]]
+from consts import META_MISSING_VALUE, POB_EXPORT_FNAME
+import models as m
 
 log = logging.getLogger(__name__)
 
 
-@attrs.define
-class GenericMod:
-    line: str
-    ranges: Ranges
-    variants: list[int] = attrs.field(default=[])
-    crafted: bool = attrs.field(default=False)
-    
-
-    @classmethod
-    def from_lua_mod(cls, lua_mod, all_variants:list[str], *, item_name=None):
-        result = cls.genericize_mod(lua_mod.line, item_name=item_name)
-
-        result.variants = make_variant_list(lua_mod, len(all_variants))
-
-        if lua_mod.crafted:
-            assert lua_mod.crafted == r"{crafted}"
-            result.crafted = True
-        
-        return result
-
-    
-    @classmethod
-    def genericize_mod(cls, line:str, *, item_name:str=None) -> 'GenericMod':  # item_name is a debgging param
-        number_pattern = r"-?\d+\.?\d*"
-        range_pattern = rf"(?P<sign>-?)\((?P<start>{number_pattern})-(?P<end>{number_pattern})\)|(?P<single>{number_pattern})"
-
-        ranges = []
-        for m in re.finditer(range_pattern, line):
-            if m["single"]:  # single number
-                n = float(m["single"])
-                ranges.append([n, n])
-            else:  # range
-                r = [float(m["start"]), float(m["end"])]
-                if m["sign"] == "-":
-                    r = [-x for x in r]
-                ranges.append(sorted(r))
-
-        line = re.sub(range_pattern, "#", line)
-
-        if "Area of Effect of Area Skills" in line:
-            log.info(f'"{item_name}" has "Area of Effect of Area Skills"')
-            line = line.replace("Area of Effect of Area Skills", "Area of Effect")  #TODO: fix in PoB
-        
-        return cls(line, ranges)
-    
-
-    @staticmethod
-    def asdict_filter(at:attrs.Attribute, value:Any) -> bool:
-        if at.name in ("ranges", "variants", "crafted") and not value:
-            return False
-        return True
-    
-
-def make_variant_list(mod, num_variants:int) -> list[int]:
-    if mod.variantList:
-        mod_variants = list(x-1 for x in mod.variantList.keys())
+def make_variant_list(lua_mod, num_variants:int) -> list[int]:
+    """make a list of (zero-indexed) variant numbers that a Lua mod applies to"""
+    if lua_mod.variantList:
+        mod_variants = list(x-1 for x in lua_mod.variantList.keys())
     else:
         mod_variants = list(range(num_variants))
     return mod_variants
+
+
+def asdict_filter(at:attrs.Attribute, value:Any) -> bool:
+    """A filter function for attrs.asdict that removes superfluous attributes that don't need to be exported.
+
+    Superfluous attributes are ones that either have thier default value,
+    or (for attributes that are not at the end of the attribute list and therefore cannot have a default)
+    have a metadata[META_MISSING_VALUE] value and are equal to it.
+    Use attrs.field(metadata={META_MISSING_VALUE: ...}) to set it.
+    """
+    if at.default != attrs.NOTHING and value == at.default:
+        return False
+    if META_MISSING_VALUE in at.metadata and at.metadata[META_MISSING_VALUE] == value:
+        return False
+    return True
+
+
+def load_pob_db(fname:m.FName=POB_EXPORT_FNAME) -> list[m.PoBItem]:
+    """load list of PoBItem from json"""
+    with open(fname) as f:
+        data:list[dict[str,Any]] = json.load(f)
+    for item in data:
+        _fix_loaded_data(item, m.PoBItem)
+        for modlist in (item["implicits"], item["explicits"]):
+            for mod in modlist:
+                _fix_loaded_data(mod, m.GenericMod)
+    return cattrs.structure(data, list[m.PoBItem])
+
+
+def _fix_loaded_data(o:dict[str,Any], type_:type) -> None:
+    """hack to add missing attributes to loaded json. Basically the oposite of utils.asdict_filter"""
+    for at in attrs.fields(type_):
+        at = (cast)((attrs.Attribute), at)  #noop
+        if at.name not in o:
+            if at.default != attrs.NOTHING:
+                o[at.name] = at.default
+            elif META_MISSING_VALUE in at.metadata:
+                o[at.name] = at.metadata[META_MISSING_VALUE]

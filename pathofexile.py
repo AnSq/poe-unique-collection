@@ -48,7 +48,7 @@ log = logging.getLogger(__name__)
 
 class PoEError (Exception):
     """represents an error returned by the API"""
-    def __init__(self, message:str="", status_code:int=None, error_code:int=None) -> None:
+    def __init__(self, message:str="", status_code:int|None=None, error_code:int|None=None) -> None:
         self.message = message
         self.status_code = status_code
         self.error_code = error_code
@@ -87,31 +87,31 @@ class RateLimiter:
         if not headers.get("X-Rate-Limit-Policy"):
             # endpoint has no rate limiting
             return ""
-        
+
         rule_names = headers["X-Rate-Limit-Rules"].split(",")
         if len(rule_names) > 1:
             raise NotImplementedError(f"processing for multiple X-Rate-Limit-Rules is not implemented (found {rule_names})")
 
         for rule_name in rule_names:
             policy = f"{rule_name}/{headers['X-Rate-Limit-Policy']}"
-            
+
             if policy not in self.policies:
                 self.policies[policy] = {}
-            
+
             rule_specs = headers[f"X-Rate-Limit-{rule_name}"].split(",")
             for rule_spec in rule_specs:
                 max_hits, period, penalty = (int(x) for x in rule_spec.split(":"))
 
                 if period not in self.policies[policy]:
                     self.policies[policy][period] = RateLimitRule(policy, max_hits, period, penalty)
-            
+
             states = headers[f"X-Rate-Limit-{rule_name}-State"].split(",")
             for state in states:
                 current_hits, period, time_restricted = (int(x) for x in state.split(":"))
                 self.policies[policy][period].state.update(current_hits, time_restricted)
-            
+
         return policy  # only works for one rule
-    
+
 
     def time_until_ready(self, endpoint:str, has_args:bool) -> int:
         """get the number of seconds until the indicated request is allowed"""
@@ -120,7 +120,7 @@ class RateLimiter:
         if ep not in self.endpoint_policies:
             # never used this endpoint before
             return 0
-        
+
         policy = self.endpoint_policies[ep]
         result = 0
         for rule in self.policies[policy].values():
@@ -140,17 +140,17 @@ class RateLimitRule:
         self.period   = period
         self.penalty  = penalty
         self.state    = RateLimitState(0, period, 0)
-    
+
 
     def name(self):
         """get the name of this rule"""
         return f"{self.policy}/{self.max_hits}:{self.period}:{self.penalty}"
-    
+
 
     def time_until_ready(self):
         """get the number of seconds until a new request will not violate this rule"""
         now = time.time()
-        
+
         # currently restricted
         if self.state.restricted_until > now:
             result = self.state.restricted_until - now + TIME_PADDING
@@ -161,15 +161,15 @@ class RateLimitRule:
         self.state.purge_times()
         if len(self.state.times) + 1 <= self.max_hits:
             return 0
-        
+
         # a new request will violate rule
         falloff_index = len(self.state.times) - self.max_hits  # index of the last state.times element that needs to expire for the request to be valid
         if falloff_index > 0:  # this should never be possible
             log.debug(f"falloff_index > 0 ({falloff_index})")
         falloff_time = self.state.times[falloff_index]
         return falloff_time + self.period - time.time() + TIME_PADDING
-    
-    
+
+
 
 class RateLimitState:
     """the current state of a rate limit rule"""
@@ -178,7 +178,7 @@ class RateLimitState:
         self.period             = period
         self.restricted_until   = time.time() + time_restricted
         self.times:deque[float] = deque()
-    
+
 
     def update(self, current_hits:int, time_restricted:int) -> None:
         """update the rate limit state"""
@@ -187,7 +187,7 @@ class RateLimitState:
 
         self.times.append(time.time())
         self.purge_times()
-    
+
 
     def purge_times(self) -> None:
         """remove times older than the period"""
@@ -319,7 +319,7 @@ class PoEClient:
             result = self._get("stash", "stash", league, stash_id, substash_id, blocking=blocking)
         else:
             result = self._get("stash", "stash", league, stash_id, blocking=blocking)
-        
+
         if get_children and ("children" in result):
             for i,sub in enumerate(result["children"]):
                 result["children"][i] = self.get_stash(league, stash_id, sub["id"], blocking=blocking)
