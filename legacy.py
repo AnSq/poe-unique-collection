@@ -4,9 +4,7 @@ import json
 import bisect
 import logging
 import io
-from typing import Any, cast
 
-import attrs
 import cattrs
 import rapidfuzz
 
@@ -66,7 +64,7 @@ def get_variant(api_item:APIItem, pob_db:list[PoBItem]) -> list[VariantMatch]|No
     variant_matches:list[VariantMatch] = []
     for variant in variants:
         if variant_match(api_item, variant):
-            variant_matches.append((variant["variant_name"], variant["variant_number"]))
+            variant_matches.append((variant.variant_name, variant.variant_number))
 
     if not variant_matches and "corrupted" not in api_item and pob_item.variant_slots == 1 and "synthesised" not in api_item:
         print(stream.getvalue())
@@ -128,14 +126,7 @@ def make_variants(pob_item:PoBItem) -> list[ItemVariant]:
                 if variant_num in mod.variants:
                     outlist.append(mod)
 
-        result.append({
-            "name"           : pob_item.name,
-            "basetype"       : basetype,
-            "variant_name"   : variant_name,
-            "variant_number" : variant_num,
-            "implicits"      : implicits,
-            "explicits"      : explicits
-        })
+        result.append(ItemVariant(pob_item.name, basetype, variant_name, variant_num, implicits, explicits))
 
     return result
 
@@ -143,7 +134,7 @@ def make_variants(pob_item:PoBItem) -> list[ItemVariant]:
 def variant_match(api_item:APIItem, variant:ItemVariant) -> bool:
     """test if an item matches a variant"""
 
-    vm_log.debug(f'variant testing "{api_item["name"]}, {api_item["baseType"]}" ({api_item["ilvl"]}) against variant "{variant["variant_name"]}"')
+    vm_log.debug(f'variant testing "{api_item["name"]}, {api_item["baseType"]}" ({api_item["ilvl"]}) against variant "{variant.variant_name}"')
 
     if "implicitMods" not in api_item:
         api_item["implicitMods"] = []
@@ -151,28 +142,28 @@ def variant_match(api_item:APIItem, variant:ItemVariant) -> bool:
         api_item["explicitMods"] = []
 
     basic_mismatch = False
-    if api_item["name"] != variant["name"]:
-        vm_log.debug(f'    name: "{api_item["name"]}"/"{variant["name"]}" (a/v)')
+    if api_item["name"] != variant.name:
+        vm_log.debug(f'    name: "{api_item["name"]}"/"{variant.name}" (a/v)')
         basic_mismatch = True
-    if api_item["baseType"] != variant["basetype"]:
-        vm_log.debug(f'    basetype: "{api_item["baseType"]}"/"{variant["basetype"]}" (a/v)')
+    if api_item["baseType"] != variant.basetype:
+        vm_log.debug(f'    basetype: "{api_item["baseType"]}"/"{variant.basetype}" (a/v)')
         basic_mismatch = True
-    if len(api_item["implicitMods"]) != len(variant["implicits"]):
-        vm_log.debug(f'    implicits: {len(api_item["implicitMods"])}/{len(variant["implicits"])} (a/v)')
+    if len(api_item["implicitMods"]) != len(variant.implicits):
+        vm_log.debug(f'    implicits: {len(api_item["implicitMods"])}/{len(variant.implicits)} (a/v)')
         basic_mismatch = True
-    if len(api_item["explicitMods"]) != len(variant["explicits"]):
-        vm_log.debug(f'    explicits: {len(api_item["explicitMods"])}/{len(variant["explicits"])} (a/v)')
+    if len(api_item["explicitMods"]) != len(variant.explicits):
+        vm_log.debug(f'    explicits: {len(api_item["explicitMods"])}/{len(variant.explicits)} (a/v)')
         basic_mismatch = True
     if basic_mismatch:
         return False
 
     api_implicits_matched = [False] * len(api_item["implicitMods"])
     api_explicits_matched = [False] * len(api_item["explicitMods"])
-    variant_implicits_matched = [False] * len(variant["implicits"])
-    variant_explicits_matched = [False] * len(variant["explicits"])
+    variant_implicits_matched = [False] * len(variant.implicits)
+    variant_explicits_matched = [False] * len(variant.explicits)
 
-    implicit_lists = (api_item["implicitMods"], variant["implicits"], api_implicits_matched, variant_implicits_matched)
-    explicit_lists = (api_item["explicitMods"], variant["explicits"], api_explicits_matched, variant_explicits_matched)
+    implicit_lists = (api_item["implicitMods"], variant.implicits, api_implicits_matched, variant_implicits_matched)
+    explicit_lists = (api_item["explicitMods"], variant.explicits, api_explicits_matched, variant_explicits_matched)
 
     for api_modlist, variant_modlist, api_matched, variant_matched in (implicit_lists, explicit_lists):
         for i,api_mod in enumerate(api_modlist):
@@ -185,9 +176,9 @@ def variant_match(api_item:APIItem, variant:ItemVariant) -> bool:
     # vm_log.debug(fuzzy.round(0))
 
     bad_api_impl = GenericMod.genericize_mod(api_item['implicitMods'][api_implicits_matched.index(False)]) if api_implicits_matched.count(False) == 1     else ''
-    bad_var_impl =                           variant['implicits'][variant_implicits_matched.index(False)]  if variant_implicits_matched.count(False) == 1 else ''
+    bad_var_impl =                           variant.implicits[variant_implicits_matched.index(False)]     if variant_implicits_matched.count(False) == 1 else ''
     bad_api_expl = GenericMod.genericize_mod(api_item['explicitMods'][api_explicits_matched.index(False)]) if api_explicits_matched.count(False) == 1     else ''
-    bad_var_expl =                           variant['explicits'][variant_explicits_matched.index(False)]  if variant_explicits_matched.count(False) == 1 else ''
+    bad_var_expl =                           variant.explicits[variant_explicits_matched.index(False)]     if variant_explicits_matched.count(False) == 1 else ''
 
     vm_log.debug(f"    api impl: {api_implicits_matched} {bad_api_impl}")
     vm_log.debug(f"    var impl: {variant_implicits_matched} {bad_var_impl}")

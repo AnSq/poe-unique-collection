@@ -5,9 +5,14 @@ import requests
 import subprocess
 import shutil
 import urllib.parse
+import os
 
+import cattrs
 
-EXPORT_DIR = "export"
+from consts import GG_EXPORT_FNAME
+from models import GGItem
+
+EXPORT_DIR = "gg_export_tmp"
 
 config = {
     "translations": ["English"],
@@ -54,14 +59,15 @@ config = {
 }
 
 
-def main():
+def main() -> None:
     latest_version = requests.get("https://raw.githubusercontent.com/poe-tool-dev/latest-patch-version/main/latest.txt").text
     config["patch"] = latest_version
-    
+
+    os.makedirs(EXPORT_DIR, exist_ok=True)
     with open(f"{EXPORT_DIR}/config.json", "w") as f:
         json.dump(config, f, indent="\t")
-    
-    subprocess.run(shutil.which("pathofexile-dat"), cwd=EXPORT_DIR)
+
+    subprocess.run(shutil.which("pathofexile-dat"), cwd=EXPORT_DIR)  #type: ignore
 
     tables_folder = f"{EXPORT_DIR}/tables/English/"
     with open(tables_folder + "UniqueStashLayout.json") as f:
@@ -72,31 +78,31 @@ def main():
         item_visual_identity = json.load(f)
     with open(tables_folder + "Words.json") as f:
         words = json.load(f)
-    
+
     data = []
     for u in unique_stash_layout:
         if u["RenamedVersion"] is None:
             name = words[u["WordsKey"]]["Text2"]
             icon = urllib.parse.quote(item_visual_identity[u["ItemVisualIdentityKey"]]["DDSFile"].split("/")[-1].split(".")[0])
             alt_art = u["IsAlternateArt"]
-            
+
             sort_key = name if u["BaseVersion"] is None else f'{words[unique_stash_layout[u["BaseVersion"]]["WordsKey"]]["Text2"]}/{name}'
             if alt_art:
                 sort_key += f"?{icon}"
 
-            data.append({
-                "_index"   : u["_index"],
-                "name"     : name,
-                "icon"     : icon,
-                "type"     : unique_stash_types[u["UniqueStashTypesKey"]]["Name"],
-                "hidden_challenge" : not u["ShowIfEmptyChallengeLeague"],
-                "hidden_standard"  : not u["ShowIfEmptyStandard"],
-                "alt_art"  : alt_art,
-                "sort_key" : sort_key
-            })
-    
-    with open("gg_export.json", "w") as f:
-        json.dump(data, f, indent="\t")
+            data.append(GGItem(
+                index = u["_index"],
+                name  = name,
+                icon  = icon,
+                type  = unique_stash_types[u["UniqueStashTypesKey"]]["Name"],
+                hidden_challenge = not u["ShowIfEmptyChallengeLeague"],
+                hidden_standard  = not u["ShowIfEmptyStandard"],
+                alt_art  = alt_art,
+                sort_key = sort_key
+            ))
+
+    with open(GG_EXPORT_FNAME, "w") as f:
+        json.dump(cattrs.unstructure(data), f, indent="\t")
 
 
 if __name__ == "__main__":

@@ -16,8 +16,6 @@ log = logging.getLogger(__name__)
 FName = str|bytes|os.PathLike
 Ranges = list[list[float]]
 APIItem = dict[str,Any]
-GGItem = dict[str,Any]
-ItemVariant = dict[str,Any]  #TODO
 VariantMatch = tuple[str,int]  #TODO
 
 
@@ -168,3 +166,27 @@ class PoBItem:
                 upgrade = lua_item.upgradePaths[1]
 
         return cls(lua_item.title, basetype, basetypes, lua_item.type, lua_item.source, lua_item.league, upgrade, variants, implicits, explicits, variant_slots)
+
+
+
+@attrs.define
+class ItemVariant:
+    name: str
+    basetype: str
+    variant_name: str
+    variant_number: int
+    implicits: list[GenericMod]
+    explicits: list[GenericMod]
+
+
+
+@attrs.define
+class GGItem:
+    index: int
+    name: str
+    icon: str
+    type: str
+    hidden_challenge: bool
+    hidden_standard: bool
+    alt_art: bool
+    sort_key: str

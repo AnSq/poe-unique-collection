@@ -8,7 +8,7 @@ from typing import Any, cast
 import attrs
 import cattrs
 
-from consts import META_MISSING_VALUE, POB_EXPORT_FNAME
+from consts import META_MISSING_VALUE, POB_EXPORT_FNAME, GG_EXPORT_FNAME
 import models as m
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,12 @@ def load_pob_db(fname:m.FName=POB_EXPORT_FNAME) -> list[m.PoBItem]:
             for mod in modlist:
                 _fix_loaded_data(mod, m.GenericMod)
     return cattrs.structure(data, list[m.PoBItem])
+
+
+def load_gg_export(fname:m.FName=GG_EXPORT_FNAME) -> list[m.GGItem]:
+    with open(fname) as f:
+        data = json.load(f)
+    return cattrs.structure(data, list[m.GGItem])
 
 
 def _fix_loaded_data(o:dict[str,Any], type_:type) -> None:

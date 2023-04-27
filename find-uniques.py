@@ -19,17 +19,15 @@ logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
 
-def main():
+def main() -> None:
     poe = pathofexile.PoEClient("oauth.json", "secrets.json", "token.json")
     compare_unique_tabs(poe)
 
 
-def compare_unique_tabs(poe:pathofexile.PoEClient):
+def compare_unique_tabs(poe:pathofexile.PoEClient) -> None:
     league, tab, api_items = load_unique_tabs(poe, "-c" in sys.argv)
 
-    with open("gg_export.json") as f:
-        gg_export:list[GGItem] = json.load(f)
-
+    gg_export = utils.load_gg_export(GG_EXPORT_FNAME)
     pob_db = utils.load_pob_db(POB_EXPORT_FNAME)
 
     api_items_dict:list[dict[tuple[str,str],APIItem]] = []
@@ -45,9 +43,9 @@ def compare_unique_tabs(poe:pathofexile.PoEClient):
         tab0_name = f'{league[0]} {tab[0]["name"]}'
         tab1_name = f'{league[1]} {tab[1]["name"]}'
         f.write(f'#,Name,Icon,Type,Hidden (Challenge),Hidden (Standard),Alt Art,"{tab0_name}","{tab1_name}",Either Tab,Left Variant,Right Variant,L Corrupted,R Corrupted,L Slots,R Slots\n')
-        for j,gg_item in enumerate(sorted(gg_export, key=lambda x:x["sort_key"])):
-            name = gg_item["name"]
-            icon = gg_item["icon"]
+        for j,gg_item in enumerate(sorted(gg_export, key=lambda gg:gg.sort_key)):
+            name = gg_item.name
+            icon = gg_item.icon
 
             in_tab:list[bool] = []
             in_tab.append((name, icon) in api_items_dict[0])
@@ -64,7 +62,7 @@ def compare_unique_tabs(poe:pathofexile.PoEClient):
                     pob_item = legacy.find_pob_unique(pob_db, name, it["baseType"])
                     slots[i] = pob_item.variant_slots if pob_item else None
 
-            f.write(f'{j},"{name}","{icon}",{gg_item["type"]},{gg_item["hidden_challenge"]},{gg_item["hidden_standard"]},{gg_item["alt_art"]},{in_tab[0]},{in_tab[1]},{in_tab[0] or in_tab[1]},"{variant[0]}","{variant[1]}",{corrupt[0]},{corrupt[1]},{slots[0]},{slots[1]}\n')
+            f.write(f'{j},"{name}","{icon}",{gg_item.type},{gg_item.hidden_challenge},{gg_item.hidden_standard},{gg_item.alt_art},{in_tab[0]},{in_tab[1]},{in_tab[0] or in_tab[1]},"{variant[0]}","{variant[1]}",{corrupt[0]},{corrupt[1]},{slots[0]},{slots[1]}\n')
             if in_tab[0] and not corrupt[0] and variant[0] == [] and slots[0] == 1:
                 num_broken += 1
 
@@ -134,7 +132,7 @@ def load_unique_tabs(poe:pathofexile.PoEClient, cached=False):
     return (league, tab, items)
 
 
-def prompt_number(prompt, valids):
+def prompt_number(prompt, valids) -> int:
     while True:
         try:
             result = int(input(prompt))
@@ -146,12 +144,12 @@ def prompt_number(prompt, valids):
         print("Invalid entry")
 
 
-def save(data, fname):
+def save(data, fname) -> None:
     with open(fname, "w") as f:
         json.dump(data, f)
 
 
-def fix_name(x):
+def fix_name(x) -> str:
     return re.sub(r'[<>:"/\\|?*]', "~", x)
 
 
