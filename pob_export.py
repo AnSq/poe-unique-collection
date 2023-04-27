@@ -7,7 +7,8 @@ import attrs
 
 import lupa.lua51 as lupa  #type: ignore
 
-from typing import Any, Sequence
+from typing import Any, Callable
+from collections.abc import Container
 from pprint import pprint as pp
 
 from consts import POB_DIR
@@ -41,7 +42,7 @@ except ImportError:
             return super().default(o)
 
 
-def main():
+def main() -> None:
     logging.basicConfig(level=logging.DEBUG)
 
     lua = lupa.LuaRuntime()
@@ -62,7 +63,7 @@ def main():
     lua.execute(f'inspect = require("inspect")')
     inspect = inspect_func(lua.eval('inspect'))
 
-    def process(item, path):
+    def process(item, path) -> Any:
         last = path[len(path)]
         if lupa.lua_type(last) == "table" and str(last) == "inspect.METATABLE":
             return None
@@ -76,7 +77,7 @@ def main():
 
     uniqueDB = lua.globals().launch.main.uniqueDB.list
 
-    generated_names = set()
+    generated_names:set[str] = set()
     for item_text in lua.globals().data.uniques.generated.values():
         lines = item_text.split("\n")
         generated_names.add(lines[0])
@@ -87,7 +88,7 @@ def main():
         json.dump(uniques, f, cls=JE, indent=4)
 
 
-def pob_export(uniqueDB:Any, generated_names:Sequence[str]) -> list[PoBItem]:
+def pob_export(uniqueDB:Any, generated_names:Container[str]) -> list[PoBItem]:
     uniques:list[PoBItem] = []
     for i in uniqueDB:
         item = uniqueDB[i]
@@ -110,7 +111,7 @@ def l(x) -> int|None:
         return None
 
 
-def inspect_func(lua_inspect):
+def inspect_func(lua_inspect:Callable[...,str]) -> Callable[[Any,int,str,str,Callable[[Any,Any],Any]],str]:
     def inspect(table, depth=None, newline="\n", indent="    ", process=lambda i,p:i):
         return lua_inspect(table, {"depth":depth, "newline":newline, "indent":indent, "process":process})
     return inspect

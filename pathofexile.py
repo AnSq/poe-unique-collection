@@ -58,7 +58,7 @@ class PoEError (Exception):
 
 class RateLimitOnCooldownError (Exception):
     """raised by a non-blocking request that would exceed the rate limit"""
-    def __init__(self, retry_after:int) -> None:
+    def __init__(self, retry_after:float) -> None:
         self.retry_after = retry_after
         super().__init__({"retry_after" : retry_after})
 
@@ -70,7 +70,7 @@ class RateLimiter:
         self.endpoint_policies:dict[tuple[str,bool],str] = {}  # {(endpoint, has_args) : policy}
 
 
-    def update(self, endpoint, has_args, headers):
+    def update(self, endpoint:str, has_args, headers) -> None:
         """update the RateLimiter after a request"""
         ep = (endpoint, has_args)
         policy = self.parse_headers(headers)
@@ -113,7 +113,7 @@ class RateLimiter:
         return policy  # only works for one rule
 
 
-    def time_until_ready(self, endpoint:str, has_args:bool) -> int:
+    def time_until_ready(self, endpoint:str, has_args:bool) -> float:
         """get the number of seconds until the indicated request is allowed"""
         ep = (endpoint, has_args)
 
@@ -122,7 +122,7 @@ class RateLimiter:
             return 0
 
         policy = self.endpoint_policies[ep]
-        result = 0
+        result:float = 0
         for rule in self.policies[policy].values():
             t = rule.time_until_ready()
             if t:
@@ -142,12 +142,12 @@ class RateLimitRule:
         self.state    = RateLimitState(0, period, 0)
 
 
-    def name(self):
+    def name(self) -> str:
         """get the name of this rule"""
         return f"{self.policy}/{self.max_hits}:{self.period}:{self.penalty}"
 
 
-    def time_until_ready(self):
+    def time_until_ready(self) -> float:
         """get the number of seconds until a new request will not violate this rule"""
         now = time.time()
 
@@ -199,14 +199,14 @@ class RateLimitState:
 
 class PoEClient:
     """a Path of Exile API client"""
-    _ses:requests.Session
-    _user_agent:str
-    _user_agent_base:str
-    _user_agent_suffix:str
-    _oauth_config:dict[str,str]
-    _secrets:dict[str,str]
-    _token:dict[str,Any]
-    _ratelimiter:RateLimiter
+    _ses: requests.Session
+    _user_agent: str
+    _user_agent_base: str
+    _user_agent_suffix: str
+    _oauth_config: dict[str,str]
+    _secrets: dict[str,str]
+    _token: dict[str,Any]
+    _ratelimiter: RateLimiter
 
     def __init__(self, oauth_fname, secrets_fname, token_fname) -> None:
         self._ses = requests.Session()
@@ -278,7 +278,7 @@ class PoEClient:
                 raise PoEError("unknown error", r.status_code, None)
 
 
-    def get_profile(self, blocking=True) -> dict:
+    def get_profile(self, blocking=True) -> dict[str,Any]:
         """get the logged-in user's profile"""
         return self._get("profile", blocking=blocking)
 
@@ -288,7 +288,7 @@ class PoEClient:
         return self._get("character", "characters", blocking=blocking)
 
 
-    def get_character(self, name:str, blocking=True) -> dict:
+    def get_character(self, name:str, blocking=True) -> dict[str,Any]:
         """get a single character"""
         return self._get("character", "character", name, blocking=blocking)
 

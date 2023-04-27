@@ -2,20 +2,21 @@
 
 import pytest
 import json
+from typing import Any
 
 from legacy import *
 import utils
 
 
 @pytest.fixture
-def test_items():
+def test_items() -> dict[str,Any]:
     with open("test_data/legacy_test.json") as f:
         test_items_ = json.load(f)
     return test_items_
 
 
 @pytest.fixture
-def pob_db():
+def pob_db() -> list[PoBItem]:
     pob_db_ = utils.load_pob_db(POB_EXPORT_FNAME)
     return pob_db_
 
@@ -45,7 +46,7 @@ def pob_db():
     (21, "Brutal Restraint",         [('Asenath (Dance with Death)', 0)]),
     (22, "Bubonic Trail",            [('One Abyssal Socket (Pre 3.21.0)', 0)]),
     (23, "Carnage Heart",            [('Current', 2)]),
-    (24, "Cinderswallow Urn",        []),
+    (24, "Cinderswallow Urn",        []),  # todo?
     (25, "Clayshaper",               [('Pre 3.19.0', 1)]),
     (26, "Combat Focus",             [('Only', 0)]),
     (27, "Crown of the Pale King",   [('Pre 3.19.0', 1)]),
@@ -53,7 +54,7 @@ def pob_db():
     (29, "Tremor Rod",               [('Pre 3.8.0', 1)]),
     (30, "Combat Focus",             [('Only', 0)])
 ))
-def test_get_variant(test_items, pob_db, test_index, name, expected):
+def test_get_variant(test_items:list[dict[str,Any]], pob_db:list[PoBItem], test_index:int, name:str, expected:list[VariantMatch]) -> None:
     test_item = test_items[test_index]
     variant = get_variant(test_item, pob_db)
     assert test_item["name"] == name

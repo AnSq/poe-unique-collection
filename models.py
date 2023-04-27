@@ -54,7 +54,7 @@ class GenericMod:
 
 
     @classmethod
-    def from_lua_mod(cls, lua_mod, all_variants:list[str], *, item_name=None):
+    def from_lua_mod(cls, lua_mod, all_variants:list[str], *, item_name=None) -> 'GenericMod':
         """create a GenericMod from a Lua mod (as pulled from PoB)"""
         result = cls.genericize_mod(lua_mod.line, item_name=item_name)
 
