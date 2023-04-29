@@ -87,7 +87,6 @@ def fix_timeless_jewel(api_item:APIItem) -> None:
             break
 
 
-
 def find_pob_unique(pob_db:list[PoBItem], name:str, basetype:str) -> PoBItem|None:
     """return the PoB data of the unique item with the given name and basetype"""
 

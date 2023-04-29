@@ -46,7 +46,7 @@ def pob_db() -> list[PoBItem]:
     (21, "Brutal Restraint",         [('Asenath (Dance with Death)', 0)]),
     (22, "Bubonic Trail",            [('One Abyssal Socket (Pre 3.21.0)', 0)]),
     (23, "Carnage Heart",            [('Current', 2)]),
-    (24, "Cinderswallow Urn",        []),  # todo?
+    pytest.param(24, "Cinderswallow Urn", NotImplemented, marks=pytest.mark.xfail(reason="not implemented: veiled/unveiled items, multiple variant_slots. PoB might also be wrong here.")),
     (25, "Clayshaper",               [('Pre 3.19.0', 1)]),
     (26, "Combat Focus",             [('Only', 0)]),
     (27, "Crown of the Pale King",   [('Pre 3.19.0', 1)]),
