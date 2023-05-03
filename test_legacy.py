@@ -54,8 +54,8 @@ def pob_db() -> list[PoBItem]:
     (29, "Tremor Rod",               [('Pre 3.8.0', 1)]),
     (30, "Combat Focus",             [('Only', 0)])
 ))
-def test_get_variant(test_items:list[dict[str,Any]], pob_db:list[PoBItem], test_index:int, name:str, expected:list[VariantMatch]) -> None:
+def test_get_variant(test_items:list[dict[str,Any]], pob_db:list[PoBItem], test_index:int, name:str, expected:list[tuple[str,int]]) -> None:
     test_item = test_items[test_index]
     variant = get_variant(test_item, pob_db)
     assert test_item["name"] == name
-    assert variant == expected
+    assert variant.backwards_compatible() == expected

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import annotations
 
 import os
 import re
@@ -6,6 +7,8 @@ import logging
 from typing import Any
 
 import attrs
+import numpy as np
+import numpy.typing as npt
 
 from consts import *
 import utils
@@ -16,7 +19,6 @@ log = logging.getLogger(__name__)
 FName = str|bytes|os.PathLike
 Ranges = list[list[float]]
 APIItem = dict[str,Any]
-VariantMatch = tuple[str,int]  #TODO
 
 
 
@@ -98,6 +100,18 @@ class GenericMod:
         return cls(line, ranges)
 
 
+    def is_inside_range(self, other:'GenericMod') -> bool:
+        """checks if the ranges of this GenericMod are inside the ranges of another GenericMod"""
+        if len(self.ranges) != len(other.ranges):
+            return False
+
+        for self_range, other_range in zip(self.ranges, other.ranges):
+            if self_range[0] < other_range[0] or self_range[1] > other_range[1]:
+                return False
+
+        return True
+
+
 
 @attrs.define
 class PoBItem:
@@ -171,7 +185,7 @@ class PoBItem:
 
 @attrs.define
 class ItemVariant:
-    name: str
+    item_name: str
     basetype: str
     variant_name: str
     variant_number: int
@@ -190,3 +204,70 @@ class GGItem:
     hidden_standard: bool
     alt_art: bool
     sort_key: str
+
+
+
+@attrs.define
+class VariantMatch:
+    """describes how well an APIItem matches an ItemVariant"""
+    variant_name: str
+    variant_number: int
+    basic_mismatch: bool = attrs.field(default=False)
+    implicit_matrix: npt.NDArray[np.float64] = attrs.field(factory=lambda: np.zeros(0), repr=False)
+    explicit_matrix: npt.NDArray[np.float64] = attrs.field(factory=lambda: np.zeros(0), repr=False)
+    scores: list[float] = attrs.field(factory=list, repr=False)
+    minumim_score: float = attrs.field(init=False, default=-1)
+    average_score: float = attrs.field(init=False, default=-1)
+    aggregate_score: float = attrs.field(init=False, default=-1)
+
+
+    def __str__(self) -> str:
+        score = "basic mismatch" if self.basic_mismatch else f'{self.minumim_score:.0f} / {self.average_score:.0f} / {self.aggregate_score:.0f}\n{self.scores}\n{self.implicit_matrix.round(0)}\n{self.explicit_matrix.round(0)}'
+        return f'{{{self.variant_name} ({self.variant_number}) {score}}}'
+
+
+
+@attrs.define
+class VariantMatchList:
+    match_list: list[VariantMatch] = attrs.field(factory=list)
+    """match_list must remain sorted by minimum_score. This is done automatically by __init__. Don't mess it up"""
+
+
+    def __attrs_post_init__(self) -> None:
+        self.match_list.sort(key=lambda x: x.minumim_score, reverse=True)  # enforces sorted match_list at instantiation
+
+
+    def __str__(self) -> str:
+        return "\n\n".join(str(x) for x in self.match_list)
+
+
+    def __len__(self) -> int:
+        return len(self.match_list)
+
+
+    def backwards_compatible(self, threshold=100) -> list[tuple[str,int]]:
+        """return a tuple that's compatible with the old way of dealing with matches, before they were classes. TODO: fix consumers and delete this."""
+        return [(x.variant_name, x.variant_number) for x in self.match_list if x.minumim_score >= threshold]
+
+
+    def best_score(self) -> float:
+        if not self.match_list:
+            return -1
+        return self.match_list[0].minumim_score  # assumes sorted match_list
+
+
+    def top(self, threshold=100) -> 'VariantMatchList':
+        """return a new VariantMatchList with only the matches that are tied for the highest minimum score.
+        If there are no matches with a score >= threshold, return an empty VariantMatchList"""
+
+        if not self.match_list or self.best_score() < threshold:
+            return VariantMatchList()
+
+        result_list = []
+        for match in self.match_list:
+            assert match.minumim_score <= self.best_score()
+            if match.minumim_score == self.best_score():
+                result_list.append(match)
+            else:
+                break
+        return VariantMatchList(result_list)

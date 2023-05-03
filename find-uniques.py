@@ -9,7 +9,7 @@ from typing import Any
 
 import pathofexile
 import legacy
-from models import APIItem, GGItem, VariantMatch
+from models import APIItem, VariantMatchList
 import utils
 from consts import *
 
@@ -42,7 +42,7 @@ def compare_unique_tabs(poe:pathofexile.PoEClient) -> None:
     with open("tab_compare.csv", "w") as f:
         tab0_name = f'{league[0]} {tab[0]["name"]}'
         tab1_name = f'{league[1]} {tab[1]["name"]}'
-        f.write(f'#,Name,Icon,Type,Hidden (Challenge),Hidden (Standard),Alt Art,"{tab0_name}","{tab1_name}",Either Tab,Left Variant,Right Variant,L Corrupted,R Corrupted,L Slots,R Slots\n')
+        f.write(f'#,Name,Icon,Type,Hidden (Challenge),Hidden (Standard),Alt Art,"{tab0_name}","{tab1_name}",Either Tab,Left Score,Left Variant,Right Score,Right Variant,L Corrupted,R Corrupted,L Slots,R Slots\n')
         for j,gg_item in enumerate(sorted(gg_export, key=lambda gg:gg.sort_key)):
             name = gg_item.name
             icon = gg_item.icon
@@ -51,19 +51,24 @@ def compare_unique_tabs(poe:pathofexile.PoEClient) -> None:
             in_tab.append((name, icon) in api_items_dict[0])
             in_tab.append((name, icon) in api_items_dict[1])
 
-            variant:list[list[VariantMatch]|None] = [None, None]
+            variant:list[VariantMatchList|None] = [None, None]
+            best_score:list[float|None] = [None, None]
             corrupt:list[bool|None] = [None, None]
             slots:list[int|None] = [None, None]
             for i in range(2):
                 if in_tab[i]:
                     it = api_items_dict[i][(name, icon)]
-                    variant[i] = legacy.get_variant(it, pob_db)
+
+                    v = legacy.get_variant(it, pob_db)
+                    best_score[i] = v.best_score()
+                    variant[i] = v.top(0)
+
                     corrupt[i] = "corrupted" in it and it["corrupted"]
                     pob_item = legacy.find_pob_unique(pob_db, name, it["baseType"])
                     slots[i] = pob_item.variant_slots if pob_item else None
 
-            f.write(f'{j},"{name}","{icon}",{gg_item.type},{gg_item.hidden_challenge},{gg_item.hidden_standard},{gg_item.alt_art},{in_tab[0]},{in_tab[1]},{in_tab[0] or in_tab[1]},"{variant[0]}","{variant[1]}",{corrupt[0]},{corrupt[1]},{slots[0]},{slots[1]}\n')
-            if in_tab[0] and not corrupt[0] and variant[0] == [] and slots[0] == 1:
+            f.write(f'{j},"{name}","{icon}",{gg_item.type},{gg_item.hidden_challenge},{gg_item.hidden_standard},{gg_item.alt_art},{in_tab[0]},{in_tab[1]},{in_tab[0] or in_tab[1]},{best_score[0]},"{str(variant[0])}",{best_score[1]},"{str(variant[1])}",{corrupt[0]},{corrupt[1]},{slots[0]},{slots[1]}\n')
+            if in_tab[0] and not corrupt[0] and variant[0] is not None and variant[0].backwards_compatible() == [] and slots[0] == 1:
                 num_broken += 1
 
     print(num_broken)
